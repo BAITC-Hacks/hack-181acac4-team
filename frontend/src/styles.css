@@ -1,0 +1,35 @@
+:root {
+  font-family: Inter, system-ui, Arial, sans-serif;
+  color: #172331;
+  background: #f5f7fa;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+button { font: inherit; cursor: pointer; }
+.app-shell { min-height: 100vh; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem max(1.5rem, calc((100vw - 1100px) / 2));
+  background: white;
+  border-bottom: 1px solid #dfe5ec;
+}
+
+.brand { font-size: 1.15rem; font-weight: 800; }
+.service-status { color: #a03b32; font-size: 0.85rem; }
+.service-status.ready { color: #16734b; }
+.content { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; }
+.eyebrow { color: #2563eb; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: .8rem; }
+h1 { margin: .4rem 0; font-size: clamp(2rem, 5vw, 3rem); }
+.intro { max-width: 650px; color: #5b6877; line-height: 1.6; }
+.tabs { display: flex; flex-wrap: wrap; gap: .6rem; margin: 2rem 0 1rem; }
+.tabs button { border: 1px solid #cbd5e1; background: white; border-radius: .7rem; padding: .7rem 1rem; }
+.tabs button.active { border-color: #2563eb; color: #1d4ed8; background: #eaf1ff; }
+.panel { background: white; border: 1px solid #dfe5ec; border-radius: 1rem; padding: 2rem; min-height: 220px; }
+.panel h2 { margin-top: 0; }
+.panel p { color: #5b6877; line-height: 1.6; }
