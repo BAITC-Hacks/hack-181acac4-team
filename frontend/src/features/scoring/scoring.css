@@ -1,0 +1,22 @@
+.score-card {
+  border: 1px solid #dbe4f0;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  background: #fff;
+}
+
+.score-card header,
+.score-card__criteria li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.score-card h3 { margin: .2rem 0 0; }
+.score-card__eyebrow { margin: 0; color: #526173; font-size: .8rem; text-transform: uppercase; }
+.score-card__total { color: #1d4ed8; font-size: 1.5rem; }
+.score-card__criteria { list-style: none; margin: 1rem 0; padding: 0; }
+.score-card__criteria li { border-top: 1px solid #edf1f5; padding: .65rem 0; }
+.score-card__hint { margin: 1rem 0 0; border-radius: .7rem; padding: .8rem; background: #eef4ff; color: #1e3a5f; }
+.score-card__hint--complete { background: #eaf7ef; color: #166534; }
