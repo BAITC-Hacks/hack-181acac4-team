@@ -136,11 +136,10 @@ class DemoIntake:
     """Offline fixture: preserve source text, ask about users/data/success; never infer facts."""
 
     def analyze(self, description: str) -> tuple[TaskFields, list[Question]]:
-        context = description[:100]
         return TaskFields(context=description), [
-            Question(id="q1", text=f'Для задачи «{context}»: кто будет пользоваться решением?', field_keys=["users"]),
-            Question(id="q2", text=f'Для задачи «{context}»: какие данные уже есть и как их получить?', field_keys=["data"]),
-            Question(id="q3", text=f'Для задачи «{context}»: по каким признакам вы оцените успех?', field_keys=["success_criteria"]),
+            Question(id="q1", text="Кто будет пользоваться решением — ваши сотрудники, клиенты или другие компании?", field_keys=["users"]),
+            Question(id="q2", text="Что вы можете предоставить команде для работы: например, таблицы, примеры заказов, описание процесса или существующий код? Если пока ничего нет, так и напишите.", field_keys=["data"]),
+            Question(id="q3", text="По каким признакам вы оцените успех?", field_keys=["success_criteria"]),
         ]
 
     def assemble(self, description: str, questions: list[dict], answers: list[dict]) -> TaskFields:
