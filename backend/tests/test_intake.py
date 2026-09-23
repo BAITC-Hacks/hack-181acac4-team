@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app import models
-from app.ai.client import AIError, Evidence, OpenAIIntake, grounded_fields
+from intake_fixture import DemoIntake
+from app.ai.client import get_intake_ai, AIError, Evidence, OpenAIIntake, grounded_fields
 from app.db import Base, get_db
 from app.main import app
 from app.schemas import ScoreBreakdown
@@ -25,6 +26,7 @@ class IntakeFlowTests(unittest.TestCase):
                 yield db
 
         app.dependency_overrides[get_db] = database
+        app.dependency_overrides[get_intake_ai] = DemoIntake
         self.client = TestClient(app)
 
     def tearDown(self):
@@ -33,7 +35,7 @@ class IntakeFlowTests(unittest.TestCase):
         self.engine.dispose()
 
     def create_card(self):
-        response = self.client.post("/api/drafts?mode=demo", json={"raw_description": "Нужен бот для кофейни"})
+        response = self.client.post("/api/drafts", json={"raw_description": "Нужен бот для кофейни"})
         self.assertEqual(response.status_code, 201)
         draft = response.json()
         self.assertEqual(len(draft["questions"]), 3)
@@ -42,7 +44,7 @@ class IntakeFlowTests(unittest.TestCase):
             {"question_id": "q2", "text": "не знаю"},
             {"question_id": "q3", "text": "Не терять заказы"},
         ]
-        response = self.client.post(f"/api/drafts/{draft['id']}/answers?mode=demo", json={"answers": answers})
+        response = self.client.post(f"/api/drafts/{draft['id']}/answers", json={"answers": answers})
         self.assertEqual(response.status_code, 200)
         return draft, response.json(), answers
 
@@ -61,7 +63,7 @@ class IntakeFlowTests(unittest.TestCase):
         self.assertEqual(updated["status"], "editing")
         self.assertIsNone(updated["score"])
         self.assertEqual(self.client.post(f"/api/cards/{card_id}/publish").status_code, 409)
-        retry = self.client.post(f"/api/drafts/{draft['id']}/answers?mode=demo", json={"answers": answers}).json()
+        retry = self.client.post(f"/api/drafts/{draft['id']}/answers", json={"answers": answers}).json()
         self.assertEqual(retry["id"], card_id)
         self.assertEqual(retry["title"], "Учёт заказов")
         self.assertEqual(self.client.get(f"/api/drafts/{draft['id']}/card").json()["contact"], "demo@example.test")
@@ -72,13 +74,14 @@ class IntakeFlowTests(unittest.TestCase):
         self.assertEqual(self.client.patch(f"/api/cards/{card['id']}", json={"title": None}).status_code, 422)
 
     def test_invalid_answers_keep_draft_retryable(self):
-        draft = self.client.post("/api/drafts?mode=demo", json={"raw_description": "Полное описание бизнеса"}).json()
-        response = self.client.post(f"/api/drafts/{draft['id']}/answers?mode=demo",
+        draft = self.client.post("/api/drafts", json={"raw_description": "Полное описание бизнеса"}).json()
+        response = self.client.post(f"/api/drafts/{draft['id']}/answers",
                                     json={"answers": [{"question_id": "wrong", "text": "Ответ"}]})
         self.assertEqual(response.status_code, 422)
         self.assertEqual(self.client.get(f"/api/drafts/{draft['id']}").json()["status"], "collecting")
 
     def test_provider_error_does_not_save_partial_draft(self):
+        app.dependency_overrides[get_intake_ai] = OpenAIIntake
         with patch("app.ai.client.OpenAIIntake.analyze", side_effect=AIError("Повторите запрос.")):
             response = self.client.post("/api/drafts", json={"raw_description": "Нужен сайт"})
         self.assertEqual(response.status_code, 503)
@@ -86,15 +89,16 @@ class IntakeFlowTests(unittest.TestCase):
             self.assertEqual(list(db.scalars(select(models.TaskDraft))), [])
 
     def test_answer_provider_error_preserves_draft(self):
-        draft = self.client.post("/api/drafts?mode=demo", json={"raw_description": "Нужен сайт"}).json()
+        draft = self.client.post("/api/drafts", json={"raw_description": "Нужен сайт"}).json()
         answers = [{"question_id": q["id"], "text": "Ответ"} for q in draft["questions"]]
+        app.dependency_overrides[get_intake_ai] = OpenAIIntake
         with patch("app.ai.client.OpenAIIntake.assemble", side_effect=AIError("Повторите.")):
             response = self.client.post(f"/api/drafts/{draft['id']}/answers", json={"answers": answers})
         self.assertEqual(response.status_code, 503)
         self.assertEqual(self.client.get(f"/api/drafts/{draft['id']}").json()["status"], "collecting")
 
     def test_blank_description_rejected(self):
-        self.assertEqual(self.client.post("/api/drafts?mode=demo", json={"raw_description": "   "}).status_code, 422)
+        self.assertEqual(self.client.post("/api/drafts", json={"raw_description": "   "}).status_code, 422)
 
     def test_confirm_uses_scoring_contract(self):
         _, card, _ = self.create_card()

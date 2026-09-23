@@ -7,15 +7,13 @@ import { ScoreBreakdown } from "../scoring";
 import Proposals from "../proposals/Proposals";
 
 const STORAGE_KEY = "hackalem-intake";
-type Mode = "openai" | "demo";
 
-function remember(id: string, mode: Mode) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ id, mode })); } catch { /* Storage is optional. */ }
+function remember(id: string) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ id })); } catch { /* Storage is optional. */ }
 }
 
 export default function Builder() {
   const [description, setDescription] = useState("");
-  const [mode, setMode] = useState<Mode>("openai");
   const [draft, setDraft] = useState<TaskDraft | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [card, setCard] = useState<TaskCard | null>(null);
@@ -42,10 +40,10 @@ export default function Builder() {
 
   useEffect(() => {
     let cancelled = false;
-    let saved: { id: string; mode: Mode } | null = null;
+    let saved: { id: string } | null = null;
     try {
       const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-      if (value && typeof value.id === "string" && ["openai", "demo"].includes(value.mode)) saved = value;
+      if (value && typeof value.id === "string") saved = value;
     } catch { /* A fresh intake still works without local storage. */ }
     if (!saved) return;
     const session = saved;
@@ -58,7 +56,6 @@ export default function Builder() {
         if (cancelled) return;
         setDraft(restored);
         setDescription(restored.raw_description);
-        setMode(session.mode);
         setAnswers(Object.fromEntries(restored.answers.map(a => [a.question_id, a.text])));
         if (restoredCard) showCard(restoredCard);
       } catch {
@@ -79,26 +76,26 @@ export default function Builder() {
 
   async function create() {
     await run(async () => {
-      const next = await api<TaskDraft>(`/drafts?mode=${mode}`, {
+      const next = await api<TaskDraft>(`/drafts`, {
         method: "POST", body: JSON.stringify({ raw_description: description }),
       });
       setDraft(next);
       setAnswers({});
-      remember(next.id, mode);
+      remember(next.id);
     });
   }
 
   async function assemble() {
     if (!draft) return;
     await run(async () => {
-      const next = await api<TaskCard>(`/drafts/${draft.id}/answers?mode=${mode}`, {
+      const next = await api<TaskCard>(`/drafts/${draft.id}/answers`, {
         method: "POST",
         body: JSON.stringify({
           answers: draft.questions.map(q => ({ question_id: q.id, text: answers[q.id] || "" })),
         }),
       });
       showCard(next);
-      remember(draft.id, mode);
+      remember(draft.id);
     });
   }
 
@@ -149,22 +146,13 @@ export default function Builder() {
       {notice && <div role="status" className="builder-notice">{notice}</div>}
       {busy && <p role="status">Обрабатываем запрос… Это может занять до минуты.</p>}
 
-      {!card && (
-        <label className="builder-checkbox">
-          <input type="checkbox" disabled={busy} checked={mode === "demo"}
-            onChange={event => setMode(event.target.checked ? "demo" : "openai")} />
-          Деморежим без OpenAI
-        </label>
-      )}
-      {mode === "demo" && <p className="builder-hint">Локальная заглушка: переносит ваш текст дословно и задаёт шаблонные вопросы. AI-анализ отключён.</p>}
-
       {!draft && <form onSubmit={event => { event.preventDefault(); void create(); }}>
         <label htmlFor="description">Опишите задачу своими словами</label>
         <textarea id="description" rows={7} maxLength={20000} required disabled={busy}
           value={description} onChange={event => setDescription(event.target.value)}
           placeholder="Например: у нашей кофейни заказы приходят в мессенджер и иногда теряются. Хотим упорядочить их обработку." />
         <p className="builder-hint">Укажите то, что уже известно. AI задаст три вопроса даже при подробном описании.</p>
-        <button className="builder-primary" disabled={busy || !description.trim()}>Получить три вопроса</button>
+        <button className="builder-primary" disabled={busy || !description.trim()}>Далее</button>
       </form>}
 
       {draft && !card && <form onSubmit={event => { event.preventDefault(); void assemble(); }}>

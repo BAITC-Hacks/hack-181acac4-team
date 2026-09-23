@@ -184,7 +184,7 @@ class OpenAIIntake:
 
         key = os.getenv("OPENAI_API_KEY", "").strip()
         if not key:
-            raise AIError("OpenAI не настроен. Добавьте API-ключ или включите деморежим.")
+            raise AIError("OpenAI не настроен. Добавьте API-ключ.")
         try:
             with OpenAI(api_key=key, timeout=45.0, max_retries=0) as client:
                 response = client.responses.parse(
@@ -200,10 +200,10 @@ class OpenAIIntake:
         except (OpenAIError, ValidationError, ValueError) as exc:
             raise AIError(
                 "OpenAI не смог обработать запрос. Проверьте настройки и повторите "
-                "или включите деморежим. Введённый текст сохранён на экране."
+                "запрос. Введённый текст сохранён на экране."
             ) from exc
         if response.status != "completed" or response.output_parsed is None:
-            raise AIError("OpenAI не вернул полный ответ. Повторите запрос или включите деморежим.")
+            raise AIError("OpenAI не вернул полный ответ. Повторите запрос.")
         return response.output_parsed
 
     def analyze(self, description: str) -> tuple[TaskFields, list[Question]]:
@@ -266,27 +266,5 @@ class OpenAIIntake:
         return self._review(fields, sources)
 
 
-class DemoIntake:
-    """Offline fixture: preserve source text, ask about users/data/success; never infer facts."""
-
-    def analyze(self, description: str) -> tuple[TaskFields, list[Question]]:
-        return TaskFields(context=description), [
-            Question(id="q1", text="Кто будет пользоваться решением — ваши сотрудники, клиенты или другие компании?", field_keys=["users"]),
-            Question(id="q2", text="Что вы можете предоставить команде для работы: например, таблицы, примеры заказов, описание процесса или существующий код? Если пока ничего нет, так и напишите.", field_keys=["data"]),
-            Question(id="q3", text="По каким признакам вы оцените успех?", field_keys=["success_criteria"]),
-        ]
-
-    def assemble(self, description: str, questions: list[dict], answers: list[dict]) -> TaskFields:
-        values = {"context": description}
-        fields = {q["id"]: q["field_keys"][0] for q in questions if q["field_keys"]}
-        for answer in answers:
-            if is_unknown(answer["text"]):
-                continue
-            key = fields.get(answer["question_id"])
-            if key:
-                values[key] = answer["text"]
-        return TaskFields(**values)
-
-
-def get_intake_ai(mode: Literal["openai", "demo"] = "openai") -> IntakeAI:
-    return DemoIntake() if mode == "demo" else OpenAIIntake()
+def get_intake_ai() -> IntakeAI:
+    return OpenAIIntake()

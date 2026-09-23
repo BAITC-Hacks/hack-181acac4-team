@@ -15,7 +15,6 @@ const screens: { id: Screen; label: string }[] = [
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("business");
-  const [apiReady, setApiReady] = useState<boolean | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskCard | null>(null);
   const [teams, setTeams] = useState<TeamProfile[]>([]);
   const [teamId, setTeamId] = useState("");
@@ -31,19 +30,10 @@ export default function App() {
     return () => { active = false; };
   }, [screen]);
 
-  useEffect(() => {
-    fetch("/api/health")
-      .then((response) => setApiReady(response.ok))
-      .catch(() => setApiReady(false));
-  }, []);
-
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand">HackAlem AI</div>
-        <span className={`service-status ${apiReady ? "ready" : ""}`}>
-          {apiReady === null ? "Проверяем сервис…" : apiReady ? "Сервис готов" : "Сервис недоступен"}
-        </span>
+        <div className="brand">TaskForce</div>
       </header>
 
       <main className="content">
