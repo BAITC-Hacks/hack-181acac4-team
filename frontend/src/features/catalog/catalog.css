@@ -1,15 +1,39 @@
-.catalog-filters { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
-.catalog-filters label { display: grid; gap: .35rem; min-width: 180px; font-weight: 600; }
-.catalog-filters input, .catalog-filters select { padding: .6rem; border: 1px solid #cbd5e1; border-radius: .5rem; background: white; }
+.catalog-filters { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.6rem; padding-bottom: 1.6rem; border-bottom: 1px solid var(--color-border); }
+.catalog-filters label { display: grid; flex: 1; gap: .5rem; min-width: 180px; font-weight: 600; font-size: .81rem; color: var(--color-muted); }
 .catalog-list { display: grid; gap: 1rem; }
-.catalog-card, .catalog-detail { padding: 1.2rem; border: 1px solid #dfe5ec; border-radius: .8rem; background: #fff; }
+.catalog-card, .catalog-detail { padding: 1.4rem 1.5rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: #fff; }
+.catalog-card { transition: border-color 160ms ease, box-shadow 160ms ease; }
+.catalog-card:hover { border-color: #a6bba6; box-shadow: 0 3px 10px #36503406; }
 .catalog-card-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
-.catalog-card h3 { margin: .35rem 0; }
-.catalog-topic { color: #2563eb; font-size: .85rem; }
-.catalog-score { white-space: nowrap; font-size: 1.2rem; }
-.catalog button { padding: .6rem .9rem; border: 1px solid #2563eb; border-radius: .5rem; background: #eaf1ff; color: #1d4ed8; }
-.catalog-detail { margin-top: 1.5rem; }
-.catalog-detail dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
-.catalog-detail dt { font-weight: 700; }
-.catalog-detail dd { margin: .3rem 0 0; white-space: pre-wrap; }
-.catalog-breakdown { display: grid; gap: .3rem; padding-left: 1.4rem; }
+.catalog-card h3 { margin: .5rem 0 .35rem; font-size: 1.28rem; letter-spacing: -.025em; }
+.catalog-topic { display: inline-block; color: #8f532d; background: #fbf1e7; padding: .15rem .55rem; border-radius: 5px; font-size: .7rem; font-weight: 600; letter-spacing: .025em; }
+.catalog-score { white-space: nowrap; color: var(--color-primary); font-size: 1.25rem; font-weight: 650; letter-spacing: -.035em; font-variant-numeric: tabular-nums; padding: .4rem .7rem; border-radius: var(--radius-small); background: var(--color-green-soft); }
+.catalog-card > p { font-size: .9rem; margin: .55rem 0; }
+.catalog-card > p + p { font-size: .78rem; color: #54705b; }
+.catalog-card > button { margin-top: .55rem; }
+.catalog-detail { margin-top: 1.75rem; border-top: 3px solid #c98752; padding: 1.75rem; background: #fdfdf9; }
+.catalog-detail > h3 { font: 400 1.8rem/1.25 Georgia, "Times New Roman", serif; letter-spacing: -.025em; margin: 0 0 1.5rem; }
+.catalog-detail dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin: 0 0 1.75rem; }
+.catalog-detail dt { font-weight: 650; color: var(--color-ink); font-size: .83rem; }
+.catalog-detail dd { margin: .45rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-muted); font-size: .88rem; line-height: 1.65; }
+.catalog-detail h4 { margin: 1.5rem 0 .75rem; }
+.catalog-breakdown { display: grid; gap: .35rem; padding-left: 1.15rem; font-size: .87rem; color: var(--color-muted); }
+.catalog-breakdown li::marker { color: #a7b69b; }
+.catalog-detail > p { font-size: .87rem; }
+.catalog-detail > button { margin-top: .5rem; background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.catalog-detail > button:hover:not(:disabled) { background: var(--color-primary-hover); border-color: var(--color-primary-hover); color: #fff; }
+
+@media (max-width: 650px) {
+  .catalog-filters { gap: .9rem; }
+  .catalog-filters label { min-width: min(100%, 200px); }
+  .catalog-card, .catalog-detail { padding: 1.15rem; }
+  .catalog-detail dl { grid-template-columns: minmax(0, 1fr); gap: 1.2rem; }
+}
+@media (max-width: 480px) {
+  .catalog-filters label { min-width: 100%; }
+  .catalog-card-heading { gap: .65rem; }
+  .catalog-card h3 { font-size: 1.15rem; }
+  .catalog-score { padding: .3rem .45rem; font-size: 1.05rem; }
+  .catalog-detail > h3 { font-size: 1.55rem; }
+  .catalog-detail > button { width: 100%; }
+}
