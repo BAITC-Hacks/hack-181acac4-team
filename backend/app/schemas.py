@@ -137,11 +137,12 @@ class Proposal(BaseModel):
 
 
 class ProposalCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     team_id: UUID
-    idea: str = Field(min_length=1)
-    plan: str = Field(min_length=1)
-    timeline: str = ""
-    prototype_url: str = ""
+    idea: str = Field(min_length=1, max_length=20000)
+    plan: str = Field(min_length=1, max_length=20000)
+    timeline: str = Field(min_length=1, max_length=500)
+    prototype_url: str = Field(default="", max_length=2000)
 
 
 class ProposalDecision(BaseModel):

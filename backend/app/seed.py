@@ -184,12 +184,17 @@ def _add_missing(session: Session, model: type[Any], records: Iterable[dict[str,
 
 def seed_database(session: Session) -> dict[str, int]:
     """Insert all demo records once and return per-table insertion counts."""
-    counts = {
-        "drafts": _add_missing(session, TaskDraft, SYNTHETIC_DRAFTS),
-        "cards": _add_missing(session, TaskCard, SYNTHETIC_CARDS),
-        "teams": _add_missing(session, TeamProfile, SYNTHETIC_TEAMS),
-        "proposals": _add_missing(session, Proposal, SYNTHETIC_PROPOSALS),
-    }
+    counts = {}
+    # With no ORM relationships, flush each parent table before its dependants.
+    # All flushes remain in one transaction; a failure cannot leave a partial seed.
+    for name, model, records in (
+        ("drafts", TaskDraft, SYNTHETIC_DRAFTS),
+        ("cards", TaskCard, SYNTHETIC_CARDS),
+        ("teams", TeamProfile, SYNTHETIC_TEAMS),
+        ("proposals", Proposal, SYNTHETIC_PROPOSALS),
+    ):
+        counts[name] = _add_missing(session, model, records)
+        session.flush()
     session.commit()
     return counts
 

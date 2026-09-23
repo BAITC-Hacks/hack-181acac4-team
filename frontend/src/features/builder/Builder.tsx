@@ -3,6 +3,8 @@ import { api } from "../../api";
 import type { TaskCard, TaskDraft, TaskFields } from "../../types";
 import { cardFields, toFields } from "./fields";
 import "./builder.css";
+import { ScoreBreakdown } from "../scoring";
+import Proposals from "../proposals/Proposals";
 
 const STORAGE_KEY = "hackalem-intake";
 type Mode = "openai" | "demo";
@@ -191,10 +193,10 @@ export default function Builder() {
             <textarea id={`card-${key}`} rows={key === "title" || key === "topic" ? 2 : 3}
               maxLength={key === "topic" ? 100 : 20000} disabled={busy} value={values[key]}
               placeholder={hint}
-              onChange={event => { setValues({ ...values, [key]: event.target.value }); setConsent(false); }} />
+              onChange={event => { setValues({ ...values, [key]: event.target.value }); setConsent(false); setNotice(""); }} />
           </div>)}
         </div>
-        {card.score && !dirty && <p>Готовность: <strong>{card.score.total}/100</strong></p>}
+        {card.score && !dirty && <ScoreBreakdown score={card.score} />}
         {(dirty || card.status === "editing") && <label className="builder-checkbox">
           <input type="checkbox" checked={consent} disabled={busy}
             onChange={event => setConsent(event.target.checked)} />
@@ -209,6 +211,7 @@ export default function Builder() {
           <button className="builder-primary" disabled={busy || dirty || card.status !== "confirmed"}
             onClick={() => void publish()}>{card.status === "published" ? "Опубликовано" : "Опубликовать"}</button>
         </div>
+        {card.status === "published" && !dirty && <Proposals key={card.id} taskId={card.id} mode="business" />}
       </>}
     </div>
   );
