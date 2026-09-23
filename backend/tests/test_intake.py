@@ -129,7 +129,8 @@ class ProviderContractTests(unittest.TestCase):
         ]
         with self.assertLogs("app.ai.client", level="WARNING") as logs:
             fields = grounded_fields(evidence, {"q1": "Секретный клиент", "q2": "Не знаю!", "long": "x" * 101})
-        self.assertTrue(all(value == "" for value in fields.model_dump().values()))
+        self.assertEqual(fields.users, "Секретный клиент")
+        self.assertTrue(all(value == "" for key, value in fields.model_dump().items() if key != "users"))
         output = " ".join(logs.output)
         for secret in ["Секретный", "private", "missing-sensitive-id"]:
             self.assertNotIn(secret, output)
@@ -148,8 +149,34 @@ class ProviderContractTests(unittest.TestCase):
                 {"question_id": "q3", "text": "не знаю"},
             ])
         self.assertEqual(fields.data, "Instagram, Telegram, Whatsapp")
-        self.assertEqual(fields.context, "")
+        self.assertEqual(fields.context, "Кондитерская")
         self.assertEqual(fields.expected_result, "")
+
+    def test_formatting_changes_preserve_original_text(self):
+        fields = grounded_fields([
+            Evidence(field="context", source_id="description", quote="Заказы через мессенджеры"),
+        ], {"description": "заказы  через\nмессенджеры"})
+        self.assertEqual(fields.context, "заказы  через\nмессенджеры")
+
+    def test_multiple_context_facts_are_preserved(self):
+        fields = grounded_fields([
+            Evidence(field="context", source_id="description", quote="Кондитерская"),
+            Evidence(field="context", source_id="q1", quote="Telegram"),
+            Evidence(field="context", source_id="q2", quote="10 заказов"),
+        ], {"description": "Кондитерская", "q1": "Telegram", "q2": "10 заказов"})
+        self.assertEqual(fields.context, "Кондитерская\nTelegram\n10 заказов")
+
+    def test_repair_restores_exact_quote_without_accepting_invented_facts(self):
+        initial = SimpleNamespace(fields=[Evidence(field="need", source_id="description", quote="Упорядочить заказы")])
+        repaired = SimpleNamespace(fields=[
+            Evidence(field="need", source_id="description", quote="Хотим упорядочить их обработку"),
+            Evidence(field="constraints", source_id="description", quote="Неделя"),
+        ])
+        with patch.object(OpenAIIntake, "_parse", side_effect=[initial, repaired]) as parse:
+            fields = OpenAIIntake().assemble("Хотим упорядочить их обработку", [], [])
+        self.assertEqual(parse.call_count, 2)
+        self.assertEqual(fields.need, "Хотим упорядочить их обработку")
+        self.assertEqual(fields.constraints, "")
 
     def test_absent_information_stays_empty(self):
         fields = grounded_fields([Evidence(field="context", source_id="description", quote="Нужен сайт")],

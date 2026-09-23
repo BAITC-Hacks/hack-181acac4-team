@@ -1,6 +1,6 @@
 import os
 import logging
-from collections import Counter
+import re
 from typing import Literal, Protocol
 
 from openai import OpenAI, OpenAIError
@@ -60,36 +60,52 @@ SYSTEM_PROMPT = """
 Неизвестные поля пропускай. «Не знаю», «уточним», отсутствие ответа — не факты.
 Явное «ограничений нет» является фактом. Не используй текст вопросов как факты.
 В title можно извлечь короткую дословную фразу из описания; иначе пропусти поле.
-Для одного поля используй не более одной цитаты. Ответы бизнеса приоритетнее
+Если поле содержит несколько фактов, верни несколько отдельных дословных цитат.
+Ответы бизнеса приоритетнее
 исходного описания; при неразрешимом противоречии оставь поле пустым.
 Контакт и формат взаимодействия — отдельные поля.
+need — проблема или желание бизнеса (например фраза «Хотим упорядочить их обработку»).
+title — короткая фраза о задаче, которую можно извлечь из желания бизнеса.
+topic — только сфера бизнеса, например «кондитерская», без «У нас».
+context — текущий процесс, каналы, объём работы и прочие исходные обстоятельства.
+Одна исходная фраза может служить основанием для нескольких полей.
 """
 
 
 def grounded_fields(evidence: list[Evidence], sources: dict[str, str]) -> TaskFields:
     values: dict[str, str] = {}
-    counts = Counter(item.field for item in evidence)
     for item in evidence:
         quote = item.quote.strip()
         source = sources.get(item.source_id)
         reason = None
-        if counts[item.field] > 1:
-            reason = "duplicate_field"
-        elif source is None:
+        if source is None:
             reason = "unknown_source"
         elif not quote:
             reason = "empty_quote"
         elif is_unknown(source) or is_unknown(quote):
             reason = "unknown_information"
         elif quote not in source:
-            reason = "quote_mismatch"
-        elif item.field == "topic" and len(quote) > 100:
+            # Accept formatting differences, but keep the actual source fragment.
+            pattern = r"\s+".join(re.escape(word) for word in quote.split())
+            match = re.search(pattern, source, flags=re.IGNORECASE)
+            if match:
+                quote = match.group()
+            else:
+                reason = "quote_mismatch"
+        if not reason and item.field == "topic" and len(quote) > 100:
             reason = "topic_too_long"
         if reason:
             # Log only controlled field names and reason codes, never user content.
             logger.warning("ai_evidence_discarded field=%s reason=%s", item.field, reason)
             continue
-        values[item.field] = quote
+        previous = values.get(item.field, "")
+        if quote in previous:
+            continue
+        combined = f"{previous}\n{quote}" if previous else quote
+        if item.field == "topic" and len(combined) > 100:
+            logger.warning("ai_evidence_discarded field=topic reason=topic_too_long")
+            continue
+        values[item.field] = combined
     return TaskFields(**values)
 
 
@@ -132,6 +148,9 @@ class OpenAIIntake:
             "Вопросы привяжи к конкретному бизнесу и содержанию описания. "
             "Если описание полное, уточняй детали и проверяй понимание. "
             "Иначе приоритет — значимые пробелы: потребность, данные, результат, критерии успеха. "
+            "Три вопроса должны покрывать РАЗНЫЕ важные пробелы карточки. "
+            "Не трать два вопроса на детали одного процесса, если неизвестны пользователи, "
+            "результат или критерии успеха. Формулируй понятные вопросы без префикса «Для задачи». "
             "Не спрашивай повторно уже ясно указанные факты.",
             {"sources": {"description": description}},
             Analysis,
@@ -150,11 +169,37 @@ class OpenAIIntake:
         sources = {"description": description, **{a["question_id"]: a["text"] for a in answers}}
         result = self._parse(
             "\nСобери поля карточки из описания и ответов. "
+            "Проверь каждое поле: title, topic, context, need, users, data, constraints, "
+            "expected_result, success_criteria, contact, interaction_format. "
+            "Извлекай сведения также из исходного описания, не только из ответов. "
+            "Для контекста можно взять полное описание. Для названия и темы — короткий "
+            "непрерывный фрагмент исходного текста. Не исправляй регистр, слова или пунктуацию цитат. "
             "Используй вопросы только для понимания того, к какому полю относится ответ.",
             {"sources": sources, "questions": questions},
             Extraction,
         )
-        return grounded_fields(result.fields, sources)
+        fields = grounded_fields(result.fields, sources)
+        rejected = {key for key, value in fields.model_dump().items() if not value}
+        if rejected:
+            # One bounded repair attempt: the original sources remain authoritative.
+            try:
+                repair = self._parse(
+                    "\nПредыдущие цитаты для requested_fields не прошли проверку. "
+                    "Верни для этих полей дословные НЕПРЕРЫВНЫЕ фрагменты sources. "
+                    "Не объединяй предложения и не перефразируй. Неизвестное пропускай. "
+                    "Каждый факт отдельной цитатой; не используй текст вопросов как источник.",
+                    {"sources": sources, "questions": questions, "requested_fields": sorted(rejected)},
+                    Extraction,
+                )
+                repaired = grounded_fields(repair.fields, sources)
+                for key in rejected:
+                    if getattr(repaired, key):
+                        setattr(fields, key, getattr(repaired, key))
+            except AIError:
+                logger.warning("ai_evidence_repair_failed")
+        if not fields.context:
+            fields.context = description
+        return fields
 
 
 class DemoIntake:

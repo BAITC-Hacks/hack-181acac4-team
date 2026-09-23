@@ -77,6 +77,11 @@ def answer_draft(
     if any(not a["text"] for a in answers):
         raise IntakeError("Заполните ответы. Если сведений нет, напишите «не знаю».", 422)
     fields = ai.assemble(draft.raw_description, draft.questions, answers)
+    # Preserve previously extracted facts only if answers did not revisit that field.
+    revisited = {key for question in draft.questions for key in question.get("field_keys", [])}
+    for key, value in schemas.TaskFields(**draft.known_fields).model_dump().items():
+        if key not in revisited and not getattr(fields, key) and value:
+            setattr(fields, key, value)
     card = models.TaskCard(
         draft_id=draft.id, business_id=draft.business_id, **fields.model_dump(), status="editing",
     )
