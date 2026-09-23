@@ -1,7 +1,7 @@
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 CardStatus = Literal["editing", "confirmed", "published"]
@@ -30,8 +30,8 @@ class Question(BaseModel):
 
 
 class Answer(BaseModel):
-    question_id: str
-    text: str
+    question_id: str = Field(min_length=1, max_length=100)
+    text: str = Field(min_length=1, max_length=10000)
 
 
 class TaskDraft(BaseModel):
@@ -47,12 +47,13 @@ class TaskDraft(BaseModel):
 
 
 class TaskDraftCreate(BaseModel):
-    business_id: str = "demo-business"
-    raw_description: str = Field(min_length=1)
+    model_config = ConfigDict(extra="forbid")
+    business_id: str = Field(default="demo-business", min_length=1, max_length=100)
+    raw_description: str = Field(min_length=1, max_length=20000)
 
 
 class TaskAnswers(BaseModel):
-    answers: list[Answer] = Field(min_length=1)
+    answers: list[Answer] = Field(min_length=1, max_length=10)
 
 
 class ScoreCriterion(BaseModel):
@@ -88,6 +89,7 @@ class TaskCard(TaskFields):
 
 
 class TaskCardUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     topic: str | None = None
     title: str | None = None
     context: str | None = None
@@ -99,6 +101,16 @@ class TaskCardUpdate(BaseModel):
     success_criteria: str | None = None
     contact: str | None = None
     interaction_format: str | None = None
+
+    @model_validator(mode="after")
+    def validate_patch(self):
+        for key in self.model_fields_set:
+            value = getattr(self, key)
+            if value is None or len(value) > 20000:
+                raise ValueError("Поле должно быть строкой длиной не более 20000 символов.")
+        if self.topic is not None and len(self.topic) > 100:
+            raise ValueError("Тема должна быть не длиннее 100 символов.")
+        return self
 
 
 class TeamProfile(BaseModel):

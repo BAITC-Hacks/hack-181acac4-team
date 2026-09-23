@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Builder from "./features/builder/Builder";
 
 type Screen = "business" | "catalog" | "team";
 
@@ -63,8 +64,8 @@ export default function App() {
         </nav>
 
         <section className="panel">
-          <h2>{active.heading}</h2>
-          <p>{active.description}</p>
+          <div hidden={screen !== "business"}><Builder /></div>
+          {screen !== "business" && <><h2>{active.heading}</h2><p>{active.description}</p></>}
         </section>
       </main>
     </div>
