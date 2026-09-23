@@ -22,7 +22,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="HackAlem AI", lifespan=lifespan)
+app = FastAPI(title="TaskForce", lifespan=lifespan)
 app.include_router(drafts_router)
 app.include_router(cards_router)
 app.include_router(catalog_router)

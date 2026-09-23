@@ -40,7 +40,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand">HackAlem AI</div>
+        <div className="brand">TaskForce</div>
         <span className={`service-status ${apiReady ? "ready" : ""}`}>
           {apiReady === null ? "Проверяем сервис…" : apiReady ? "Сервис готов" : "Сервис недоступен"}
         </span>
