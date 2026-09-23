@@ -110,10 +110,112 @@ class IntakeFlowTests(unittest.TestCase):
 
 
 class ProviderContractTests(unittest.TestCase):
+    def test_data_caveat_overrides_positive_review(self):
+        from app.ai.client import SemanticReview, FieldReview
+        from app.schemas import TaskFields
+        review = SemanticReview(fields=[FieldReview(field="data", keep=True)])
+        with patch.object(OpenAIIntake, "_parse", return_value=review):
+            fields = OpenAIIntake()._review(TaskFields(data="Пока всё в переписках и тетрадке"), {
+                "q2": "Пока всё в переписках и тетрадке. Что из этого сможем передать вашей команде, ещё не решили.",
+            })
+        self.assertEqual(fields.data, "")
+
+    def test_unrelated_uncertainty_does_not_remove_available_data(self):
+        from app.ai.client import data_access_unresolved
+        self.assertFalse(data_access_unresolved({"q1": "Передадим таблицу заказов. Сроки ещё не решили."}))
+        self.assertTrue(data_access_unresolved({"q1": "Пока не можем предоставить доступ к заказам."}))
+
+    def test_semantic_review_removes_misplaced_facts(self):
+        from app.ai.client import SemanticReview, FieldReview
+        from app.schemas import TaskFields
+        fields = TaskFields(context="Принимаем заказы", need="Не терять заказы",
+                            users="Два администратора", data="Телеграм",
+                            expected_result="Не терять заказы", interaction_format="Два администратора")
+        review = SemanticReview(fields=[FieldReview(field=key, keep=key in {"context", "need", "users"})
+                                        for key, value in fields.model_dump().items() if value])
+        with patch.object(OpenAIIntake, "_parse", return_value=review):
+            result = OpenAIIntake()._review(fields, {"description": "Принимаем заказы"})
+        self.assertEqual(result.users, "Два администратора")
+        self.assertEqual(result.data, "")
+        self.assertEqual(result.expected_result, "")
+        self.assertEqual(result.interaction_format, "")
+
+    def test_incomplete_semantic_review_cannot_bypass_validation(self):
+        from app.ai.client import SemanticReview
+        from app.schemas import TaskFields
+        with patch.object(OpenAIIntake, "_parse", return_value=SemanticReview(fields=[])):
+            with self.assertRaises(AIError):
+                OpenAIIntake()._review(TaskFields(data="Телеграм"), {})
+
     def test_fabricated_quote_rejected(self):
-        with self.assertRaises(AIError):
-            grounded_fields([Evidence(field="constraints", source_id="description", quote="3 недели")],
-                            {"description": "Нужен сайт"})
+        fields = grounded_fields([
+            Evidence(field="constraints", source_id="description", quote="3 недели"),
+            Evidence(field="context", source_id="description", quote="Нужен сайт"),
+        ], {"description": "Нужен сайт"})
+        self.assertEqual(fields.constraints, "")
+        self.assertEqual(fields.context, "Нужен сайт")
+
+    def test_invalid_evidence_is_omitted_without_logging_user_text(self):
+        evidence = [
+            Evidence(field="users", source_id="q1", quote="Секретный клиент"),
+            Evidence(field="users", source_id="q1", quote="клиент"),
+            Evidence(field="data", source_id="q2", quote="знаю"),
+            Evidence(field="need", source_id="missing-sensitive-id", quote="private"),
+            Evidence(field="title", source_id="q1", quote=""),
+            Evidence(field="topic", source_id="long", quote="x" * 101),
+        ]
+        with self.assertLogs("app.ai.client", level="WARNING") as logs:
+            fields = grounded_fields(evidence, {"q1": "Секретный клиент", "q2": "Не знаю!", "long": "x" * 101})
+        self.assertEqual(fields.users, "Секретный клиент")
+        self.assertTrue(all(value == "" for key, value in fields.model_dump().items() if key != "users"))
+        output = " ".join(logs.output)
+        for secret in ["Секретный", "private", "missing-sensitive-id"]:
+            self.assertNotIn(secret, output)
+        self.assertIn("reason=unknown_information", output)
+
+    @patch.object(OpenAIIntake, "_review", new=lambda self, fields, sources: fields)
+    def test_assembly_keeps_valid_fields_when_model_paraphrases_another(self):
+        result = SimpleNamespace(fields=[
+            Evidence(field="data", source_id="q1", quote="Instagram, Telegram, Whatsapp"),
+            Evidence(field="context", source_id="q2", quote="10 заказов в день"),
+            Evidence(field="expected_result", source_id="q3", quote="не знаю"),
+        ])
+        with patch.object(OpenAIIntake, "_parse", return_value=result):
+            fields = OpenAIIntake().assemble("Кондитерская", [], [
+                {"question_id": "q1", "text": "Instagram, Telegram, Whatsapp"},
+                {"question_id": "q2", "text": "в среднем за день 10 за неделю около 70"},
+                {"question_id": "q3", "text": "не знаю"},
+            ])
+        self.assertEqual(fields.data, "Instagram, Telegram, Whatsapp")
+        self.assertEqual(fields.context, "Кондитерская")
+        self.assertEqual(fields.expected_result, "")
+
+    def test_formatting_changes_preserve_original_text(self):
+        fields = grounded_fields([
+            Evidence(field="context", source_id="description", quote="Заказы через мессенджеры"),
+        ], {"description": "заказы  через\nмессенджеры"})
+        self.assertEqual(fields.context, "заказы  через\nмессенджеры")
+
+    def test_multiple_context_facts_are_preserved(self):
+        fields = grounded_fields([
+            Evidence(field="context", source_id="description", quote="Кондитерская"),
+            Evidence(field="context", source_id="q1", quote="Telegram"),
+            Evidence(field="context", source_id="q2", quote="10 заказов"),
+        ], {"description": "Кондитерская", "q1": "Telegram", "q2": "10 заказов"})
+        self.assertEqual(fields.context, "Кондитерская\nTelegram\n10 заказов")
+
+    @patch.object(OpenAIIntake, "_review", new=lambda self, fields, sources: fields)
+    def test_repair_restores_exact_quote_without_accepting_invented_facts(self):
+        initial = SimpleNamespace(fields=[Evidence(field="need", source_id="description", quote="Упорядочить заказы")])
+        repaired = SimpleNamespace(fields=[
+            Evidence(field="need", source_id="description", quote="Хотим упорядочить их обработку"),
+            Evidence(field="constraints", source_id="description", quote="Неделя"),
+        ])
+        with patch.object(OpenAIIntake, "_parse", side_effect=[initial, repaired]) as parse:
+            fields = OpenAIIntake().assemble("Хотим упорядочить их обработку", [], [])
+        self.assertEqual(parse.call_count, 2)
+        self.assertEqual(fields.need, "Хотим упорядочить их обработку")
+        self.assertEqual(fields.constraints, "")
 
     def test_absent_information_stays_empty(self):
         fields = grounded_fields([Evidence(field="context", source_id="description", quote="Нужен сайт")],

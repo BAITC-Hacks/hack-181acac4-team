@@ -77,6 +77,8 @@ def answer_draft(
     if any(not a["text"] for a in answers):
         raise IntakeError("Заполните ответы. Если сведений нет, напишите «не знаю».", 422)
     fields = ai.assemble(draft.raw_description, draft.questions, answers)
+    # Assembly reviews the original description and answers together. Do not
+    # restore preliminary fields here: that could undo semantic rejection.
     card = models.TaskCard(
         draft_id=draft.id, business_id=draft.business_id, **fields.model_dump(), status="editing",
     )
