@@ -193,7 +193,7 @@ export default function Builder() {
             <textarea id={`card-${key}`} rows={key === "title" || key === "topic" ? 2 : 3}
               maxLength={key === "topic" ? 100 : 20000} disabled={busy} value={values[key]}
               placeholder={hint}
-              onChange={event => { setValues({ ...values, [key]: event.target.value }); setConsent(false); }} />
+              onChange={event => { setValues({ ...values, [key]: event.target.value }); setConsent(false); setNotice(""); }} />
           </div>)}
         </div>
         {card.score && !dirty && <ScoreBreakdown score={card.score} />}
