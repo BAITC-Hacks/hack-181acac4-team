@@ -1,0 +1,15 @@
+.catalog-filters { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+.catalog-filters label { display: grid; gap: .35rem; min-width: 180px; font-weight: 600; }
+.catalog-filters input, .catalog-filters select { padding: .6rem; border: 1px solid #cbd5e1; border-radius: .5rem; background: white; }
+.catalog-list { display: grid; gap: 1rem; }
+.catalog-card, .catalog-detail { padding: 1.2rem; border: 1px solid #dfe5ec; border-radius: .8rem; background: #fff; }
+.catalog-card-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
+.catalog-card h3 { margin: .35rem 0; }
+.catalog-topic { color: #2563eb; font-size: .85rem; }
+.catalog-score { white-space: nowrap; font-size: 1.2rem; }
+.catalog button { padding: .6rem .9rem; border: 1px solid #2563eb; border-radius: .5rem; background: #eaf1ff; color: #1d4ed8; }
+.catalog-detail { margin-top: 1.5rem; }
+.catalog-detail dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.catalog-detail dt { font-weight: 700; }
+.catalog-detail dd { margin: .3rem 0 0; white-space: pre-wrap; }
+.catalog-breakdown { display: grid; gap: .3rem; padding-left: 1.4rem; }
