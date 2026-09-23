@@ -110,6 +110,28 @@ class IntakeFlowTests(unittest.TestCase):
 
 
 class ProviderContractTests(unittest.TestCase):
+    def test_semantic_review_removes_misplaced_facts(self):
+        from app.ai.client import SemanticReview, FieldReview
+        from app.schemas import TaskFields
+        fields = TaskFields(context="Принимаем заказы", need="Не терять заказы",
+                            users="Два администратора", data="Телеграм",
+                            expected_result="Не терять заказы", interaction_format="Два администратора")
+        review = SemanticReview(fields=[FieldReview(field=key, keep=key in {"context", "need", "users"})
+                                        for key, value in fields.model_dump().items() if value])
+        with patch.object(OpenAIIntake, "_parse", return_value=review):
+            result = OpenAIIntake()._review(fields, {"description": "Принимаем заказы"})
+        self.assertEqual(result.users, "Два администратора")
+        self.assertEqual(result.data, "")
+        self.assertEqual(result.expected_result, "")
+        self.assertEqual(result.interaction_format, "")
+
+    def test_incomplete_semantic_review_cannot_bypass_validation(self):
+        from app.ai.client import SemanticReview
+        from app.schemas import TaskFields
+        with patch.object(OpenAIIntake, "_parse", return_value=SemanticReview(fields=[])):
+            with self.assertRaises(AIError):
+                OpenAIIntake()._review(TaskFields(data="Телеграм"), {})
+
     def test_fabricated_quote_rejected(self):
         fields = grounded_fields([
             Evidence(field="constraints", source_id="description", quote="3 недели"),
@@ -136,6 +158,7 @@ class ProviderContractTests(unittest.TestCase):
             self.assertNotIn(secret, output)
         self.assertIn("reason=unknown_information", output)
 
+    @patch.object(OpenAIIntake, "_review", new=lambda self, fields, sources: fields)
     def test_assembly_keeps_valid_fields_when_model_paraphrases_another(self):
         result = SimpleNamespace(fields=[
             Evidence(field="data", source_id="q1", quote="Instagram, Telegram, Whatsapp"),
@@ -166,6 +189,7 @@ class ProviderContractTests(unittest.TestCase):
         ], {"description": "Кондитерская", "q1": "Telegram", "q2": "10 заказов"})
         self.assertEqual(fields.context, "Кондитерская\nTelegram\n10 заказов")
 
+    @patch.object(OpenAIIntake, "_review", new=lambda self, fields, sources: fields)
     def test_repair_restores_exact_quote_without_accepting_invented_facts(self):
         initial = SimpleNamespace(fields=[Evidence(field="need", source_id="description", quote="Упорядочить заказы")])
         repaired = SimpleNamespace(fields=[
