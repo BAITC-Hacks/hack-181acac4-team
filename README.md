@@ -87,6 +87,154 @@ docker compose exec backend python -m app.seed
 
 Данные сохраняются в Docker volume `postgres_data`. Остановка без удаления данных: `docker compose down`.
 
+## Deployment / развёртывание на сервере
+
+Ниже — инструкция для отдельного Linux VPS с Docker Compose v2, доменом и доступом по SSH. Это конфигурация для удалённого показа MVP: общий пароль ограничивает доступ к демо, но не заменяет авторизацию пользователей и проверку прав внутри приложения. Используйте синтетические данные. Развёртывание на реальном VPS в рамках проекта ещё не проверялось.
+
+### 1. Подготовить сервер
+
+- Установите Git, Docker Engine и Compose v2.
+- Направьте DNS A-запись вашего домена на IP сервера. Если настроена AAAA-запись, она тоже должна указывать на работающий сервер.
+- Разрешите входящие TCP-порты 80 и 443; SSH оставьте доступным для администрирования. Базу и API наружу не публикуем.
+- Склонируйте репозиторий и настройте `.env`, как в разделе быстрого запуска. Укажите действующий `OPENAI_API_KEY` и отдельный пароль PostgreSQL. Для текущего формирования URL используйте пароль из букв и цифр без URL-спецсимволов, например результат `openssl rand -hex 24`.
+
+Добавьте в `.env`:
+
+```dotenv
+APP_DOMAIN=taskforce.example.com
+DEMO_PASSWORD_HASH='вставьте_хеш_пароля'
+```
+
+Замените пример домена своим. Получить хеш общего пароля демо можно интерактивно:
+
+```sh
+docker run --rm -it caddy:2-alpine caddy hash-password
+```
+
+Скопируйте полученный хеш в одинарных кавычках: так символы `$` сохранятся буквально. Сам пароль передайте проверяющим отдельно от репозитория. Не коммитьте `.env`.
+
+### 2. Создать конфигурацию развёртывания
+
+В корне проекта создайте `compose.deploy.yml` со следующим содержимым. Это **самостоятельный** Compose-файл; его не нужно объединять с локальным `docker-compose.yml`.
+
+```yaml
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+    depends_on:
+      db:
+        condition: service_healthy
+  web:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      DEMO_PASSWORD_HASH: ${DEMO_PASSWORD_HASH}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend/dist:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+```
+
+Рядом создайте `Caddyfile`:
+
+```caddyfile
+{$APP_DOMAIN} {
+    basic_auth {
+        judge {$DEMO_PASSWORD_HASH}
+    }
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+}
+```
+
+Caddy отдаёт собранный frontend, направляет `/api/*` в FastAPI и управляет HTTPS-сертификатом при доступном домене и портах. Схема маршрутизации следует [официальным примерам Caddy для SPA и API](https://caddyserver.com/docs/caddyfile/patterns). Vite dev server при таком запуске не используется.
+
+### 3. Собрать и запустить
+
+Из корня проекта на сервере:
+
+```sh
+docker compose build frontend
+docker compose run --rm --no-deps frontend sh -c "npm ci && npm run build"
+docker compose -p taskforce-demo -f compose.deploy.yml config --quiet
+docker compose -p taskforce-demo -f compose.deploy.yml up -d --build
+docker compose -p taskforce-demo -f compose.deploy.yml ps
+```
+
+Первая пара команд использует контейнер frontend только для сборки и записывает `frontend/dist` на сервер. Backend запускается из своего Dockerfile без `--reload`. Дождитесь готовности API, затем загрузите примеры:
+
+```sh
+docker compose -p taskforce-demo -f compose.deploy.yml exec backend python -m app.seed
+```
+
+Откройте `https://ваш-домен` и войдите с логином `judge` и выбранным паролем. Проверка API (curl запросит пароль):
+
+```sh
+curl --fail --user judge https://ваш-домен/api/health
+```
+
+Ожидается `{"status":"ok"}`. Затем пройдите создание карточки, публикацию, отклик и решение бизнеса. Если HTTPS ещё не готов, проверьте DNS и логи:
+
+```sh
+docker compose -p taskforce-demo -f compose.deploy.yml logs --tail 80 web backend
+```
+
+### 4. Обновление и сохранность данных
+
+После merge в `main`:
+
+```sh
+git pull --ff-only origin main
+docker compose build frontend
+docker compose run --rm --no-deps frontend sh -c "npm ci && npm run build"
+docker compose -p taskforce-demo -f compose.deploy.yml up -d --build
+docker compose -p taskforce-demo -f compose.deploy.yml restart web
+```
+
+Пересоздание контейнеров сохраняет данные в volume. Не используйте `down -v`, если данные нужны. Перед обновлением сделайте резервную копию на сервере:
+
+```sh
+docker compose -p taskforce-demo -f compose.deploy.yml exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
+```
+
+Храните резервную копию вне репозитория. В проекте пока нет миграций: изменение схемы БД требует отдельного плана обновления. Общий пароль демо не разделяет права бизнеса и команд; полноценный публичный запуск требует серверной авторизации и контроля доступа.
+
 ## Демо за пять минут
 
 Перед показом запустите сервисы и загрузите примеры. Время ответа зависит от внешнего API OpenAI.
