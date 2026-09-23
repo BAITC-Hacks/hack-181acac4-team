@@ -1,10 +1,20 @@
 import os
+import logging
+from collections import Counter
 from typing import Literal, Protocol
 
 from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..schemas import Question, TaskFields
+
+logger = logging.getLogger(__name__)
+
+
+def is_unknown(text: str) -> bool:
+    return text.strip().casefold().rstrip(".!?… ") in {
+        "не знаю", "неизвестно", "уточним", "пока не знаю", "не определено",
+    }
 
 FieldKey = Literal[
     "topic", "title", "context", "need", "users", "data", "constraints",
@@ -58,12 +68,27 @@ SYSTEM_PROMPT = """
 
 def grounded_fields(evidence: list[Evidence], sources: dict[str, str]) -> TaskFields:
     values: dict[str, str] = {}
+    counts = Counter(item.field for item in evidence)
     for item in evidence:
         quote = item.quote.strip()
-        if item.field in values or not quote or quote not in sources.get(item.source_id, ""):
-            raise AIError("Модель вернула неподтверждённые сведения. Повторите запрос.")
-        if item.field == "topic" and len(quote) > 100:
-            raise AIError("Модель вернула слишком длинную тему. Повторите запрос.")
+        source = sources.get(item.source_id)
+        reason = None
+        if counts[item.field] > 1:
+            reason = "duplicate_field"
+        elif source is None:
+            reason = "unknown_source"
+        elif not quote:
+            reason = "empty_quote"
+        elif is_unknown(source) or is_unknown(quote):
+            reason = "unknown_information"
+        elif quote not in source:
+            reason = "quote_mismatch"
+        elif item.field == "topic" and len(quote) > 100:
+            reason = "topic_too_long"
+        if reason:
+            # Log only controlled field names and reason codes, never user content.
+            logger.warning("ai_evidence_discarded field=%s reason=%s", item.field, reason)
+            continue
         values[item.field] = quote
     return TaskFields(**values)
 
@@ -146,7 +171,7 @@ class DemoIntake:
         values = {"context": description}
         fields = {q["id"]: q["field_keys"][0] for q in questions if q["field_keys"]}
         for answer in answers:
-            if answer["text"].strip().lower().rstrip(".!") in {"не знаю", "уточним", "неизвестно"}:
+            if is_unknown(answer["text"]):
                 continue
             key = fields.get(answer["question_id"])
             if key:

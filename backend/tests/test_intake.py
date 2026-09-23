@@ -111,9 +111,45 @@ class IntakeFlowTests(unittest.TestCase):
 
 class ProviderContractTests(unittest.TestCase):
     def test_fabricated_quote_rejected(self):
-        with self.assertRaises(AIError):
-            grounded_fields([Evidence(field="constraints", source_id="description", quote="3 недели")],
-                            {"description": "Нужен сайт"})
+        fields = grounded_fields([
+            Evidence(field="constraints", source_id="description", quote="3 недели"),
+            Evidence(field="context", source_id="description", quote="Нужен сайт"),
+        ], {"description": "Нужен сайт"})
+        self.assertEqual(fields.constraints, "")
+        self.assertEqual(fields.context, "Нужен сайт")
+
+    def test_invalid_evidence_is_omitted_without_logging_user_text(self):
+        evidence = [
+            Evidence(field="users", source_id="q1", quote="Секретный клиент"),
+            Evidence(field="users", source_id="q1", quote="клиент"),
+            Evidence(field="data", source_id="q2", quote="знаю"),
+            Evidence(field="need", source_id="missing-sensitive-id", quote="private"),
+            Evidence(field="title", source_id="q1", quote=""),
+            Evidence(field="topic", source_id="long", quote="x" * 101),
+        ]
+        with self.assertLogs("app.ai.client", level="WARNING") as logs:
+            fields = grounded_fields(evidence, {"q1": "Секретный клиент", "q2": "Не знаю!", "long": "x" * 101})
+        self.assertTrue(all(value == "" for value in fields.model_dump().values()))
+        output = " ".join(logs.output)
+        for secret in ["Секретный", "private", "missing-sensitive-id"]:
+            self.assertNotIn(secret, output)
+        self.assertIn("reason=unknown_information", output)
+
+    def test_assembly_keeps_valid_fields_when_model_paraphrases_another(self):
+        result = SimpleNamespace(fields=[
+            Evidence(field="data", source_id="q1", quote="Instagram, Telegram, Whatsapp"),
+            Evidence(field="context", source_id="q2", quote="10 заказов в день"),
+            Evidence(field="expected_result", source_id="q3", quote="не знаю"),
+        ])
+        with patch.object(OpenAIIntake, "_parse", return_value=result):
+            fields = OpenAIIntake().assemble("Кондитерская", [], [
+                {"question_id": "q1", "text": "Instagram, Telegram, Whatsapp"},
+                {"question_id": "q2", "text": "в среднем за день 10 за неделю около 70"},
+                {"question_id": "q3", "text": "не знаю"},
+            ])
+        self.assertEqual(fields.data, "Instagram, Telegram, Whatsapp")
+        self.assertEqual(fields.context, "")
+        self.assertEqual(fields.expected_result, "")
 
     def test_absent_information_stays_empty(self):
         fields = grounded_fields([Evidence(field="context", source_id="description", quote="Нужен сайт")],
