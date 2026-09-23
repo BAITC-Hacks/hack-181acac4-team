@@ -11,6 +11,17 @@ from ..schemas import Question, TaskFields
 logger = logging.getLogger(__name__)
 
 
+def data_access_unresolved(sources: dict[str, str]) -> bool:
+    """Reject explicit uncertainty about sharing data, not about unrelated topics."""
+    for source in sources.values():
+        for sentence in re.split(r"[.!?\n]", source.casefold()):
+            sharing = re.search(r"переда\w*|предостав\w*|подел\w*|доступ\w*", sentence)
+            uncertain = re.search(r"не\s+(?:решил\w*|определил\w*|зна\w*|мож\w*|смож\w*|готов\w*)", sentence)
+            if sharing and uncertain:
+                return True
+    return False
+
+
 def is_unknown(text: str) -> bool:
     return text.strip().casefold().rstrip(".!?… ") in {
         "не знаю", "неизвестно", "уточним", "пока не знаю", "не определено",
@@ -78,12 +89,17 @@ SYSTEM_PROMPT = """
 need — проблема или желание бизнеса (например фраза «Хотим упорядочить их обработку»).
 title — короткая фраза о задаче, которую можно извлечь из желания бизнеса.
 topic — только сфера бизнеса, например «кондитерская», без «У нас».
+Для topic извлекай минимальный фрагмент, называющий отрасль, не целое предложение.
+Для title используй короткий фрагмент expected_result, если он описывает продукт.
 context — текущий процесс, каналы, объём работы и прочие исходные обстоятельства.
 users — явно названные пользователи будущего решения, не участники разработки.
 data — конкретные существующие материалы для работы команды: таблицы, записи,
 примеры, документы, API или источник данных с явно описанным доступом/содержимым.
 Названия мессенджеров и фраза «записываем в тетрадку» сами по себе НЕ data;
 «дадим записи заказов из тетрадки» — data.
+Всегда читай ПОЛНЫЙ ответ. Если после описания материалов сказано, что бизнес
+ещё не решил, что сможет передать, или доступ не согласован, оставь data пустым.
+Нельзя обрезать оговорку о недоступности и сохранять только положительную часть.
 expected_result — конкретный продукт/артефакт или изменение процесса, которое
 должна выполнить команда (например панель заказов). «Хотим не терять заказы» —
 только need, пока результат работы команды не определён.
@@ -158,6 +174,9 @@ class OpenAIIntake:
             if not item.keep:
                 setattr(fields, item.field, "")
                 logger.warning("ai_evidence_discarded field=%s reason=semantic_mismatch", item.field)
+        if fields.data and data_access_unresolved(sources):
+            fields.data = ""
+            logger.warning("ai_evidence_discarded field=data reason=access_unresolved")
         return fields
 
     def _parse(self, instruction: str, payload: dict, schema: type[BaseModel]):

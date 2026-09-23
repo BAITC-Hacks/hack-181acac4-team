@@ -110,6 +110,21 @@ class IntakeFlowTests(unittest.TestCase):
 
 
 class ProviderContractTests(unittest.TestCase):
+    def test_data_caveat_overrides_positive_review(self):
+        from app.ai.client import SemanticReview, FieldReview
+        from app.schemas import TaskFields
+        review = SemanticReview(fields=[FieldReview(field="data", keep=True)])
+        with patch.object(OpenAIIntake, "_parse", return_value=review):
+            fields = OpenAIIntake()._review(TaskFields(data="Пока всё в переписках и тетрадке"), {
+                "q2": "Пока всё в переписках и тетрадке. Что из этого сможем передать вашей команде, ещё не решили.",
+            })
+        self.assertEqual(fields.data, "")
+
+    def test_unrelated_uncertainty_does_not_remove_available_data(self):
+        from app.ai.client import data_access_unresolved
+        self.assertFalse(data_access_unresolved({"q1": "Передадим таблицу заказов. Сроки ещё не решили."}))
+        self.assertTrue(data_access_unresolved({"q1": "Пока не можем предоставить доступ к заказам."}))
+
     def test_semantic_review_removes_misplaced_facts(self):
         from app.ai.client import SemanticReview, FieldReview
         from app.schemas import TaskFields
