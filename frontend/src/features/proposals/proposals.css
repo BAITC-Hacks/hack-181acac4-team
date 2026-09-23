@@ -1,13 +1,26 @@
-.proposals form, .proposals section { display: grid; gap: 1rem; }
-.proposals h3 { margin: 0; }
-.proposals label { display: grid; gap: .35rem; font-weight: 600; }
-.proposals input, .proposals textarea { width: 100%; padding: .6rem; border: 1px solid #cbd5e1; border-radius: .5rem; font: inherit; }
-.proposals textarea { min-height: 90px; resize: vertical; }
-.proposals button { width: fit-content; padding: .6rem .9rem; border: 1px solid #2563eb; border-radius: .5rem; background: #eaf1ff; color: #1d4ed8; }
-.proposals button:disabled { opacity: .55; cursor: wait; }
-.proposals-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .6rem; }
-.proposals-heading strong { overflow-wrap: anywhere; }
+.proposals form, .proposals section { display: grid; gap: 1.2rem; }
+.proposals form { margin-top: 1.75rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border); }
+.proposals h3 { margin: 0; font-size: 1.25rem; }
+.proposals label { display: grid; gap: .55rem; font-weight: 600; font-size: .86rem; }
+.proposals textarea { min-height: 115px; resize: vertical; }
+.proposals button { width: fit-content; }
+.proposals form > button { background: var(--color-primary); color: #fff; border-color: var(--color-primary); margin-top: .3rem; }
+.proposals form > button:hover:not(:disabled) { background: var(--color-primary-hover); color: #fff; border-color: var(--color-primary-hover); }
+.proposals-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .7rem; }
+.proposals-heading strong { overflow-wrap: anywhere; font-size: .88rem; font-weight: 650; flex: 1; min-width: min(100%, 180px); }
+.proposals-heading > span { color: #5e685f; font-size: .74rem; font-weight: 600; padding: .25rem .6rem; border-radius: 5px; background: #f0f2ec; }
 .proposals-list { display: grid; gap: 1rem; }
-.proposals-list article { border: 1px solid #dfe5ec; border-radius: .8rem; padding: 1rem; }
-.proposals-list p { white-space: pre-wrap; overflow-wrap: anywhere; }
-.proposals-actions { display: flex; gap: .6rem; }
+.proposals-list article { border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1.35rem; }
+.proposals-list p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .89rem; margin: .9rem 0; }
+.proposals-list p strong { color: var(--color-ink); font-weight: 600; }
+.proposals-list a { font-size: .85rem; }
+.proposals-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.1rem; }
+.proposals-actions button:first-child { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.proposals-actions button:first-child:hover:not(:disabled) { background: var(--color-primary-hover); border-color: var(--color-primary-hover); color: #fff; }
+.proposals-actions button:last-child { color: #8b5141; border-color: #e3d2c9; }
+.proposals-actions button:last-child:hover:not(:disabled) { background: #fcf2ec; border-color: #c8a591; }
+@media (max-width: 480px) {
+  .proposals-list article { padding: 1rem; }
+  .proposals form > button { width: 100%; }
+  .proposals-actions button { flex: 1; }
+}
